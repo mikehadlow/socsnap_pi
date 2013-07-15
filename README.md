@@ -5,4 +5,4 @@ Twitter based social picture booth for Raspberry Pi.
 
 Install ...
 
-    sudo apt-get install oauth-dev
+    sudo apt-get install liboauth-dev
