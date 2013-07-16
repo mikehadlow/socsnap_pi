@@ -69,26 +69,25 @@ void test_oauth()
     free(postarg);
 }
 
-char ***get_amp_separated_strings(char *input) 
+char **get_amp_separated_strings(char *input) 
 {
-    char **values_p[KEYVALUE_LENGTH] = malloc(sizeof(char*[KEYVALUE_LENGTH]));
-    char **values = &values_p;
+    char **values;
+    values = malloc(KEYVALUE_LENGTH * sizeof(char*));
+
     char *remainder;
-    size_t length;
+    int length;
     char amp = '&';
 
     int i = 0;
     int complete = 0;
     for (i = 0; i < KEYVALUE_LENGTH; i++) {
         remainder = strchr(input, amp);
+
         if(remainder != NULL) {
-            printf("Found. Remainder is %s\n", remainder);
-
             length = remainder - input;
-            printf("Length is %zd\n", length);
 
-            values[i] = calloc(sizeof(char), length + 1);
-            values[i] = strncpy(values[i], input, length);
+            values[i] = malloc(sizeof(char) * (length + 1));
+            values[i] = strncpy(values[i], input, length); 
             values[i][length + 1] = '\0';
 
             input = remainder + 1;
@@ -104,7 +103,7 @@ char ***get_amp_separated_strings(char *input)
         }
     }
 
-    return values_p;
+    return values;
 }
 
 int main(int argc, char *argv[])
@@ -113,8 +112,9 @@ int main(int argc, char *argv[])
 //    test_oauth();
 
     char *test = "first_key=first_value&second_key=second_value&third_key=third_value";
-    char ***values_p = get_amp_separated_strings(test);
-    char **values = &values_p;
+    char **values;
+    values = get_amp_separated_strings(test);
+
     int i = 0;
 
     for (i = 0; i < KEYVALUE_LENGTH; i++) {
@@ -129,7 +129,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    free(values_p);
+    free(values);
 
     return 0;
 }
