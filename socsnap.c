@@ -13,13 +13,6 @@ typedef struct KeyValue {
     char *value;
 } KeyValue;
 
-KeyValue *get_keyvalues(char *oauth_args)
-{
-    KeyValue *keyvalues = calloc(sizeof(KeyValue), KEYVALUE_LENGTH);
-
-    return keyvalues;
-}
-
 void destroy_keyvalues(KeyValue *keyvalues)
 {
     int i = 0;
@@ -92,8 +85,6 @@ char **get_amp_separated_strings(char *input)
 
             input = remainder + 1;
         } else if (!complete) {
-            printf("Last %s\n", input);
-
             length = strlen(input);
             values[i] = calloc(sizeof(char), length);
             strcpy(values[i], input);
@@ -106,20 +97,55 @@ char **get_amp_separated_strings(char *input)
     return values;
 }
 
+KeyValue *get_key_values_from_keyvalue_strings(char **values)
+{
+    KeyValue *keyvalues;
+    keyvalues = malloc(KEYVALUE_LENGTH * sizeof(KeyValue*));
+    char eq = '=';
+    char* value;
+    size_t keylength = 0;
+    size_t valuelength = 0;
+
+    int i = 0;
+    for(i = 0; i < KEYVALUE_LENGTH; i++) {
+        if(values[i] != NULL) {
+            value = strchr(values[i], eq);
+            if(value != NULL) {
+                keylength = (value - values[i]);
+                valuelength = strlen(value + 1);
+
+                keyvalues[i].key = malloc((keylength + 1) * sizeof(char*));
+                keyvalues[i].value = malloc((valuelength + 1) * sizeof(char*));
+                
+                keyvalues[i].key = strncpy(keyvalues[i].key, values[i], keylength);
+                keyvalues[i].key[keylength + 1] = '\0';
+                keyvalues[i].value = strcpy(keyvalues[i].value, value + 1);
+            }
+     
+        }
+    }
+
+    return keyvalues;
+}
+
 int main(int argc, char *argv[])
 {
     printf("Running socsnap ...\n");
 //    test_oauth();
 
-    char *test = "first_key=first_value&second_key=second_value&third_key=third_value";
+    char *test = "first_key=first_value_and_some&second_key=second_value_x&third_key=third_value_and_something_quite_long";
     char **values;
+    KeyValue *keyvalues;
+
     values = get_amp_separated_strings(test);
+    keyvalues = get_key_values_from_keyvalue_strings(values);
 
     int i = 0;
 
     for (i = 0; i < KEYVALUE_LENGTH; i++) {
         if(values[i] != NULL) {
             printf("%s\n", values[i]);
+            printf("%s => %s\n", keyvalues[i].key, keyvalues[i].value);
         }
     }
 
@@ -130,6 +156,7 @@ int main(int argc, char *argv[])
     }
 
     free(values);
+    destroy_keyvalues(keyvalues);
 
     return 0;
 }
