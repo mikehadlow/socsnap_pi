@@ -17,8 +17,10 @@ void destroy_keyvalues(KeyValue *keyvalues)
 {
     int i = 0;
     for(i = 0; i < KEYVALUE_LENGTH; i++) {
-        free(keyvalues[i].key);
-        free(keyvalues[i].value);
+        if(keyvalues[i].key != NULL) {
+            free(keyvalues[i].key);
+            free(keyvalues[i].value);
+        }
     }
     free(keyvalues);
 }
@@ -100,7 +102,7 @@ char **get_amp_separated_strings(char *input)
 KeyValue *get_key_values_from_keyvalue_strings(char **values)
 {
     KeyValue *keyvalues;
-    keyvalues = malloc(KEYVALUE_LENGTH * sizeof(KeyValue*));
+    keyvalues = malloc(KEYVALUE_LENGTH * sizeof(KeyValue));
     char eq = '=';
     char* value;
     size_t keylength = 0;
@@ -108,6 +110,7 @@ KeyValue *get_key_values_from_keyvalue_strings(char **values)
 
     int i = 0;
     for(i = 0; i < KEYVALUE_LENGTH; i++) {
+
         if(values[i] != NULL) {
             value = strchr(values[i], eq);
             if(value != NULL) {
@@ -120,8 +123,12 @@ KeyValue *get_key_values_from_keyvalue_strings(char **values)
                 keyvalues[i].key = strncpy(keyvalues[i].key, values[i], keylength);
                 keyvalues[i].key[keylength + 1] = '\0';
                 keyvalues[i].value = strcpy(keyvalues[i].value, value + 1);
-            }
-     
+            } else {
+                printf("Invalid key value string: %s\n", values[i]);
+            } 
+        } else {
+            keyvalues[i].key = NULL;
+            keyvalues[i].value = NULL;
         }
     }
 
