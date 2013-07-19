@@ -115,6 +115,9 @@ int main(int argc, char *argv[])
     keyvalues = get_key_values(test);
 
     int i = 0;
+    for(i = 0; i < keyvalues->qty; i++) {
+        printf("%s => %s\n", keyvalues->entry[i].key->data, keyvalues->entry[i].value->data);
+    }
 
     oauth_header = build_oauth_header(keyvalues);
     printf("OAuth header:\n%s\n", oauth_header->data);
