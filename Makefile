@@ -5,7 +5,7 @@ LDFLAGS=-loauth
 
 all: socsnap
 
-socsnap: 
+socsnap: bstrlib.o
 	cc $(CFLAGS) socsnap.c -o socsnap $(LDFLAGS)
 
 clean:

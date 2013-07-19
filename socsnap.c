@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "dbg.h"
+#include "bstrlib.h"
 #include "../twitter/twitter.h"
 
 #define KEYVALUE_LENGTH 7 
@@ -83,12 +84,12 @@ char **get_amp_separated_strings(char *input)
 
             values[i] = malloc(sizeof(char) * (length + 1));
             values[i] = strncpy(values[i], input, length); 
-            values[i][length + 1] = '\0';
+            values[i][length] = '\0';
 
             input = remainder + 1;
         } else if (!complete) {
             length = strlen(input);
-            values[i] = calloc(sizeof(char), length);
+            values[i] = calloc(sizeof(char), length + 1);
             strcpy(values[i], input);
             complete = 1;
         } else {
@@ -135,6 +136,25 @@ KeyValue *get_key_values_from_keyvalue_strings(char **values)
     return keyvalues;
 }
 
+char *build_oauth_header(KeyValue *keyvalues)
+{
+    size_t extra_chars = 3; // =""
+    size_t length = 0;
+    int i = 0;
+    char *oauth_header;
+
+    for (i = 0; i < KEYVALUE_LENGTH; i++) {
+        if(keyvalues[i].key != NULL) {
+            length = length + strlen(keyvalues[i].key) + strlen(keyvalues[i].value) + extra_chars;
+        }
+    }
+    length = length + 1;
+    oauth_header = malloc(length * sizeof(char));
+
+
+    return oauth_header;
+}
+
 int main(int argc, char *argv[])
 {
     printf("Running socsnap ...\n");
@@ -143,6 +163,7 @@ int main(int argc, char *argv[])
     char *test = "first_key=first_value_and_some&second_key=second_value_x&third_key=third_value_and_something_quite_long";
     char **values;
     KeyValue *keyvalues;
+    char *oauth_header;
 
     values = get_amp_separated_strings(test);
     keyvalues = get_key_values_from_keyvalue_strings(values);
@@ -162,6 +183,10 @@ int main(int argc, char *argv[])
         }
     }
 
+    oauth_header = build_oauth_header(keyvalues);
+    printf("OAuth header:\n%s\n", oauth_header);
+    
+    free(oauth_header);
     free(values);
     destroy_keyvalues(keyvalues);
 
