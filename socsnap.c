@@ -9,20 +9,24 @@
 
 #define KEYVALUE_LENGTH 7 
 
-typedef struct KeyValue { 
-    char *key;
-    char *value;
-} KeyValue;
+typedef struct bKeyValue {
+    bstring key;
+    bstring value;
+} bKeyValue;
 
-void destroy_keyvalues(KeyValue *keyvalues)
+typedef struct bKeyValues {
+    int qty;
+    bKeyValue *entry;
+} bKeyValues;
+
+void destroy_keyvalues(bKeyValues *keyvalues)
 {
     int i = 0;
-    for(i = 0; i < KEYVALUE_LENGTH; i++) {
-        if(keyvalues[i].key != NULL) {
-            free(keyvalues[i].key);
-            free(keyvalues[i].value);
-        }
+    for(i = 0; i < keyvalues->qty; i++) {
+        bdestroy(keyvalues->entry[i].key);
+        bdestroy(keyvalues->entry[i].value);
     }
+    free(keyvalues->entry);
     free(keyvalues);
 }
 
@@ -65,94 +69,38 @@ void test_oauth()
     free(postarg);
 }
 
-char **get_amp_separated_strings(char *input) 
+bKeyValues *get_key_values(const_bstring input)
 {
-    char **values;
-    values = malloc(KEYVALUE_LENGTH * sizeof(char*));
-
-    char *remainder;
-    int length;
-    char amp = '&';
-
     int i = 0;
-    int complete = 0;
-    for (i = 0; i < KEYVALUE_LENGTH; i++) {
-        remainder = strchr(input, amp);
+    struct bstrList *values;
+    struct bstrList *keyvalue;
+    bKeyValues *keyvalues;
 
-        if(remainder != NULL) {
-            length = remainder - input;
+    values = bsplit(input, '&');
+    keyvalues = malloc(sizeof(bKeyValues));
+    keyvalues->entry = malloc(values->qty * sizeof(bKeyValue));
+    keyvalues->qty = values->qty;
 
-            values[i] = malloc(sizeof(char) * (length + 1));
-            values[i] = strncpy(values[i], input, length); 
-            values[i][length] = '\0';
-
-            input = remainder + 1;
-        } else if (!complete) {
-            length = strlen(input);
-            values[i] = calloc(sizeof(char), length + 1);
-            strcpy(values[i], input);
-            complete = 1;
+    for(i = 0; i < values->qty; i++) {
+        keyvalue = bsplit(values->entry[i], '=');
+        if(keyvalue->qty == 2) {
+            keyvalues->entry[i].key = bstrcpy(keyvalue->entry[0]);
+            keyvalues->entry[i].value = bstrcpy(keyvalue->entry[1]);
         } else {
-            values[i] = NULL;
+            printf("Invalid keyvalue: %s", values->entry[i]->data);
+            return NULL;
         }
+        bstrListDestroy(keyvalue);
     }
 
-    return values;
-}
-
-KeyValue *get_key_values_from_keyvalue_strings(char **values)
-{
-    KeyValue *keyvalues;
-    keyvalues = malloc(KEYVALUE_LENGTH * sizeof(KeyValue));
-    char eq = '=';
-    char* value;
-    size_t keylength = 0;
-    size_t valuelength = 0;
-
-    int i = 0;
-    for(i = 0; i < KEYVALUE_LENGTH; i++) {
-
-        if(values[i] != NULL) {
-            value = strchr(values[i], eq);
-            if(value != NULL) {
-                keylength = (value - values[i]);
-                valuelength = strlen(value + 1);
-
-                keyvalues[i].key = malloc((keylength + 1) * sizeof(char*));
-                keyvalues[i].value = malloc((valuelength + 1) * sizeof(char*));
-                
-                keyvalues[i].key = strncpy(keyvalues[i].key, values[i], keylength);
-                keyvalues[i].key[keylength + 1] = '\0';
-                keyvalues[i].value = strcpy(keyvalues[i].value, value + 1);
-            } else {
-                printf("Invalid key value string: %s\n", values[i]);
-            } 
-        } else {
-            keyvalues[i].key = NULL;
-            keyvalues[i].value = NULL;
-        }
-    }
+    bstrListDestroy(values);
 
     return keyvalues;
 }
 
-char *build_oauth_header(KeyValue *keyvalues)
+bstring build_oauth_header(bKeyValues *keyvalues)
 {
-    size_t extra_chars = 3; // =""
-    size_t length = 0;
-    int i = 0;
-    char *oauth_header;
-
-    for (i = 0; i < KEYVALUE_LENGTH; i++) {
-        if(keyvalues[i].key != NULL) {
-            length = length + strlen(keyvalues[i].key) + strlen(keyvalues[i].value) + extra_chars;
-        }
-    }
-    length = length + 1;
-    oauth_header = malloc(length * sizeof(char));
-
-
-    return oauth_header;
+    return bfromcstr("test");
 }
 
 int main(int argc, char *argv[])
@@ -160,34 +108,19 @@ int main(int argc, char *argv[])
     printf("Running socsnap ...\n");
 //    test_oauth();
 
-    char *test = "first_key=first_value_and_some&second_key=second_value_x&third_key=third_value_and_something_quite_long";
-    char **values;
-    KeyValue *keyvalues;
-    char *oauth_header;
+    bstring test = bfromcstr("first_key=first_value_and_some&second_key=second_value_x&third_key=third_value_and_something_quite_long");
+    bKeyValues *keyvalues;
+    bstring oauth_header;
 
-    values = get_amp_separated_strings(test);
-    keyvalues = get_key_values_from_keyvalue_strings(values);
+    keyvalues = get_key_values(test);
 
     int i = 0;
 
-    for (i = 0; i < KEYVALUE_LENGTH; i++) {
-        if(values[i] != NULL) {
-            printf("%s\n", values[i]);
-            printf("%s => %s\n", keyvalues[i].key, keyvalues[i].value);
-        }
-    }
-
-    for (i = 0; i < KEYVALUE_LENGTH; i++) {
-        if(values[i] != NULL) {
-            free(values[i]);
-        }
-    }
-
     oauth_header = build_oauth_header(keyvalues);
-    printf("OAuth header:\n%s\n", oauth_header);
+    printf("OAuth header:\n%s\n", oauth_header->data);
     
-    free(oauth_header);
-    free(values);
+    bdestroy(test);
+    bdestroy(oauth_header);
     destroy_keyvalues(keyvalues);
 
     return 0;
