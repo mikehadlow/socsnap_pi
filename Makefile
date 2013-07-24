@@ -1,12 +1,12 @@
 PREFIX?=/usr/local
 
 CFLAGS=-g -Wall 
-LDFLAGS=-loauth -lcurl
+LDFLAGS=-loauth -lcurl -lm
 
 all: socsnap
 
-socsnap: bstrlib.o
-	cc $(CFLAGS) bstrlib.o socsnap.c -o socsnap $(LDFLAGS)
+socsnap: bstrlib.o cJSON.o
+	cc $(CFLAGS) bstrlib.o cJSON.o socsnap.c -o socsnap $(LDFLAGS)
 
 clean:
 	rm -f *.o

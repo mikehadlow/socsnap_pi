@@ -6,6 +6,7 @@
 
 #include "dbg.h"
 #include "bstrlib.h"
+#include "cJSON.h"
 #include "../twitter/twitter.h"
 
 #define KEYVALUE_LENGTH 7 
@@ -57,19 +58,6 @@ char *get_oauth_args(char *url)
     return postarg; 
 }
 
-void test_oauth()
-{
-    char *url = "http://www.example.com/";
-    char *postarg = NULL;
-
-    postarg = get_oauth_args(url);
-
-    printf("oauth args: %s\n", postarg);
-    printf("%s\n\n", postarg);
-
-    free(postarg);
-}
-
 bKeyValues *get_key_values(const_bstring input)
 {
     int i = 0;
@@ -119,6 +107,26 @@ bstring build_oauth_header(bKeyValues *keyvalues)
     return buffer;
 }
 
+// libcurl writer callback
+size_t write_data(void *buffer, size_t size, size_t nmemb, void *userp)
+{
+    int i = 0;
+    char *data;
+    data = (char *) buffer;
+    size_t realsize = size * nmemb;
+    printf("Got data: size: %zu, nmemb: %zu\n", size, nmemb);
+
+    if(size == 1) {
+        for(i = 0; i < nmemb; i++) {
+            if(data[i] == '\r') {
+                printf("Got newline\n");
+            }
+        }
+    }
+
+    return realsize;
+}
+
 void curl_test(bstring oauth_header, char *url) {
     CURL *curl;
     CURLcode res;
@@ -137,6 +145,7 @@ void curl_test(bstring oauth_header, char *url) {
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
         curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+        curl_easy_setopt(curl,  CURLOPT_WRITEFUNCTION, write_data);
 
         res = curl_easy_perform(curl);
         if(res != CURLE_OK) {
@@ -154,7 +163,7 @@ int main(int argc, char *argv[])
 {
     printf("Running socsnap ...\n");
 
-    char *url = "https://api.twitter.com/1.1/statuses/mentions_timeline.json?count=2";
+    char *url = "https://userstream.twitter.com/1.1/user.json";
     char *postarg = NULL;
 
     postarg = get_oauth_args(url);
