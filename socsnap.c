@@ -114,12 +114,39 @@ size_t write_data(void *buffer, size_t size, size_t nmemb, void *userp)
     char *data;
     data = (char *) buffer;
     size_t realsize = size * nmemb;
+    cJSON *root, text, user, screen_name;
+    char *rendered;
+
     printf("Got data: size: %zu, nmemb: %zu\n", size, nmemb);
+
+    if(nmemb < 2) {
+        printf("Unexpected short buffer.\n");
+        return realsize;
+    }
+
+    if(data[0] == '\r') {
+        printf("Keep alive.\n");
+        return realsize;
+    }
 
     if(size == 1) {
         for(i = 0; i < nmemb; i++) {
             if(data[i] == '\r') {
                 printf("Got newline\n");
+                data[i] = '\0';
+                root = cJSON_Parse(data);
+                if(root == NULL) {
+                    printf("cJSON_Parse returned NULL\n");
+                    return realsize;
+                }
+                
+                rendered = cJSON_Print(root);
+                printf("\nData:\n%s\n\n", rendered);
+                free(rendered);
+
+                
+
+                cJSON_Delete(root);
             }
         }
     }
