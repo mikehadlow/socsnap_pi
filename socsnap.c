@@ -32,7 +32,7 @@ void destroy_keyvalues(bKeyValues *keyvalues)
     free(keyvalues);
 }
 
-char *get_oauth_args(char *url)
+bstring get_oauth_args(char *url)
 {
     char *consumer_key = CONSUMER_KEY;
     char *consumer_secret = CONSUMER_SECRET;
@@ -55,7 +55,9 @@ char *get_oauth_args(char *url)
 
     free(signed_url);
 
-    return postarg; 
+    bstring bpostarg = bfromcstr(postarg);
+    free(postarg);
+    return bpostarg; 
 }
 
 bKeyValues *get_key_values(const_bstring input)
@@ -114,7 +116,7 @@ size_t write_data(void *buffer, size_t size, size_t nmemb, void *userp)
     char *data;
     data = (char *) buffer;
     size_t realsize = size * nmemb;
-    cJSON *root, text, user, screen_name;
+    cJSON *root, *text, *user, *screen_name;
     char *rendered;
 
     printf("Got data: size: %zu, nmemb: %zu\n", size, nmemb);
@@ -144,13 +146,29 @@ size_t write_data(void *buffer, size_t size, size_t nmemb, void *userp)
                 printf("\nData:\n%s\n\n", rendered);
                 free(rendered);
 
-                
+                text = cJSON_GetObjectItem(root,"text");
+                if(text != NULL) {
+                    printf("Text: %s\n", text->valuestring);
+
+                    user = cJSON_GetObjectItem(root,"user");
+                    check(user, "user element does not exist.");
+
+                    screen_name = cJSON_GetObjectItem(user,"screen_name");
+                    check(screen_name, "screen_name eleemnt does not exist"); 
+
+                    printf("User: %s\n", screen_name->valuestring);
+                } else {
+                    printf("text element not found\n");
+                }
 
                 cJSON_Delete(root);
             }
         }
     }
 
+    return realsize;
+
+error:
     return realsize;
 }
 
@@ -172,7 +190,7 @@ void curl_test(bstring oauth_header, char *url) {
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
         curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
-        curl_easy_setopt(curl,  CURLOPT_WRITEFUNCTION, write_data);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
 
         res = curl_easy_perform(curl);
         if(res != CURLE_OK) {
@@ -180,9 +198,61 @@ void curl_test(bstring oauth_header, char *url) {
         } else {
             printf("curl succeded\n");
         }
-
         curl_easy_cleanup(curl);
     }
+    curl_slist_free_all(headers);
+}
+
+bstring get_oauth_header(char *url)
+{
+    bstring args = get_oauth_args(url);
+    bKeyValues *keyvalues;
+    keyvalues = get_key_values(args);
+    bstring oauth_header = build_oauth_header(keyvalues);
+
+    bdestroy(args);
+    destroy_keyvalues(keyvalues);
+
+    return oauth_header;
+}
+
+void monitor_status()
+{
+    char *url = "https://userstream.twitter.com/1.1/user.json";
+
+    bstring oauth_header = get_oauth_header(url);
+    curl_test(oauth_header, url);
+    
+    bdestroy(oauth_header);
+}
+
+
+void post_picture()
+{
+    char *url = "https://api.twitter.com/1.1/statuses/update_with_media.json";
+    CURL *curl;
+    CURLcode res;
+    struct curl_slist *headers = NULL;
+    bstring oauth_header = get_oauth_header(url);
+    headers = curl_slist_append(headers, oauth_header->data);
+
+    curl = curl_easy_init();
+    if(curl) {
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl, CURLOPT_URL, url);
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+
+        res = curl_easy_perform(curl);
+        if(res != CURLE_OK) {
+            fprintf(stderr, "curl_easy_perform failed: %s\n", curl_easy_strerror(res));
+        } else {
+            printf("curl succeeded\n");
+        }
+    }
+
+    bdestroy(oauth_header);
+    curl_easy_cleanup(curl);
     curl_slist_free_all(headers);
 }
 
@@ -190,34 +260,8 @@ int main(int argc, char *argv[])
 {
     printf("Running socsnap ...\n");
 
-    char *url = "https://userstream.twitter.com/1.1/user.json";
-    char *postarg = NULL;
-
-    postarg = get_oauth_args(url);
-    printf("Oauth args:\n%s\n", postarg);
-
-    bstring test = bfromcstr(postarg);
-    free(postarg);
-    
-    bKeyValues *keyvalues;
-    bstring oauth_header;
-
-    keyvalues = get_key_values(test);
-
-    int i = 0;
-    for(i = 0; i < keyvalues->qty; i++) {
-        printf("%s => %s\n", keyvalues->entry[i].key->data, keyvalues->entry[i].value->data);
-    }
-
-    oauth_header = build_oauth_header(keyvalues);
-    printf("OAuth header:\n%s\n", oauth_header->data);
-
-    curl_test(oauth_header, url);
-    
-    bdestroy(test);
-    bdestroy(oauth_header);
-    destroy_keyvalues(keyvalues);
-
+    // monitor_status();
+    post_picture();
 
     return 0;
 }
