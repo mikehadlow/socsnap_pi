@@ -32,14 +32,13 @@ void destroy_keyvalues(bKeyValues *keyvalues)
     free(keyvalues);
 }
 
-bstring get_oauth_args(char *url)
+bstring get_oauth_args(char *url, char *method)
 {
     char *consumer_key = CONSUMER_KEY;
     char *consumer_secret = CONSUMER_SECRET;
     char *access_token = ACCESS_TOKEN;
     char *access_token_secret = ACCESS_TOKEN_SECRET;
 
-    char *method = "GET";
     char *signed_url = NULL;
     char *postarg = NULL;
 
@@ -203,9 +202,9 @@ void curl_test(bstring oauth_header, char *url) {
     curl_slist_free_all(headers);
 }
 
-bstring get_oauth_header(char *url)
+bstring get_oauth_header(char *url, char *method)
 {
-    bstring args = get_oauth_args(url);
+    bstring args = get_oauth_args(url, method);
     bKeyValues *keyvalues;
     keyvalues = get_key_values(args);
     bstring oauth_header = build_oauth_header(keyvalues);
@@ -219,8 +218,9 @@ bstring get_oauth_header(char *url)
 void monitor_status()
 {
     char *url = "https://userstream.twitter.com/1.1/user.json";
+    char *method = "GET";
 
-    bstring oauth_header = get_oauth_header(url);
+    bstring oauth_header = get_oauth_header(url, method);
     curl_test(oauth_header, url);
     
     bdestroy(oauth_header);
@@ -230,18 +230,42 @@ void monitor_status()
 void post_picture()
 {
     char *url = "https://api.twitter.com/1.1/statuses/update_with_media.json";
+    char *method = "POST";
     CURL *curl;
     CURLcode res;
     struct curl_slist *headers = NULL;
-    bstring oauth_header = get_oauth_header(url);
+
+    CURLM *multi_handle;
+    int still_running;
+
+    struct curl_httppost *formpost = NULL;
+    struct curl_httppost *lastptr = NULL;
+
+    bstring oauth_header = get_oauth_header(url, method);
     headers = curl_slist_append(headers, oauth_header->data);
+    headers = curl_slist_append(headers, "Expect:");
+
+    curl_formadd(&formpost, &lastptr,
+        CURLFORM_COPYNAME, "status",
+        CURLFORM_COPYCONTENTS, "My avatar, created by my son Leo, age 11",
+        CURLFORM_END); 
+        
+    curl_formadd(&formpost, &lastptr,
+        CURLFORM_COPYNAME, "media[]",
+        CURLFORM_FILE, "mike.jpg",
+        CURLFORM_END);
 
     curl = curl_easy_init();
-    if(curl) {
+    multi_handle = curl_multi_init();
+    
+    if(curl && multi_handle) {
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
         curl_easy_setopt(curl, CURLOPT_URL, url);
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
         curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+        curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
+
+        curl_multi_add_handle(multi_handle, curl);
 
         res = curl_easy_perform(curl);
         if(res != CURLE_OK) {
@@ -249,7 +273,17 @@ void post_picture()
         } else {
             printf("curl succeeded\n");
         }
+
+        do {
+            curl_multi_perform(multi_handle, &still_running);
+        } while(still_running);
+
+        printf("upload succeeded\n");
     }
+
+
+    curl_multi_cleanup(multi_handle);
+    curl_formfree(formpost);
 
     bdestroy(oauth_header);
     curl_easy_cleanup(curl);
@@ -260,7 +294,7 @@ int main(int argc, char *argv[])
 {
     printf("Running socsnap ...\n");
 
-    // monitor_status();
+    //monitor_status();
     post_picture();
 
     return 0;
