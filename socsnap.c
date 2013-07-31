@@ -3,6 +3,7 @@
 #include <oauth.h>
 #include <string.h>
 #include <curl/curl.h>
+#include <time.h>
 
 #include "dbg.h"
 #include "bstrlib.h"
@@ -226,8 +227,17 @@ void monitor_status()
     bdestroy(oauth_header);
 }
 
+char *get_time()
+{
+    time_t rawtime;
+    struct tm *timeinfo;
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
 
-void post_picture()
+    return asctime(timeinfo);
+}
+
+void post_picture(char *path, char *status)
 {
     char *url = "https://api.twitter.com/1.1/statuses/update_with_media.json";
     char *method = "POST";
@@ -235,56 +245,45 @@ void post_picture()
     CURLcode res;
     struct curl_slist *headers = NULL;
 
-    CURLM *multi_handle;
-    int still_running;
-
     struct curl_httppost *formpost = NULL;
     struct curl_httppost *lastptr = NULL;
 
     bstring oauth_header = get_oauth_header(url, method);
+
     headers = curl_slist_append(headers, oauth_header->data);
     headers = curl_slist_append(headers, "Expect:");
 
     curl_formadd(&formpost, &lastptr,
         CURLFORM_COPYNAME, "status",
-        CURLFORM_COPYCONTENTS, "My avatar, created by my son Leo, age 11",
+        CURLFORM_COPYCONTENTS, status,
         CURLFORM_END); 
-        
+
     curl_formadd(&formpost, &lastptr,
         CURLFORM_COPYNAME, "media[]",
-        CURLFORM_FILE, "mike.jpg",
+        CURLFORM_FILE, path,
         CURLFORM_END);
 
     curl = curl_easy_init();
-    multi_handle = curl_multi_init();
     
-    if(curl && multi_handle) {
+    if(curl) {
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
         curl_easy_setopt(curl, CURLOPT_URL, url);
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
         curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
         curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
 
-        curl_multi_add_handle(multi_handle, curl);
-
         res = curl_easy_perform(curl);
+
         if(res != CURLE_OK) {
             fprintf(stderr, "curl_easy_perform failed: %s\n", curl_easy_strerror(res));
         } else {
-            printf("curl succeeded\n");
+            printf("\n\n-------------curl succeeded\n\n-----------------");
         }
-
-        do {
-            curl_multi_perform(multi_handle, &still_running);
-        } while(still_running);
-
         printf("upload succeeded\n");
     }
 
 
-    curl_multi_cleanup(multi_handle);
     curl_formfree(formpost);
-
     bdestroy(oauth_header);
     curl_easy_cleanup(curl);
     curl_slist_free_all(headers);
@@ -293,9 +292,13 @@ void post_picture()
 int main(int argc, char *argv[])
 {
     printf("Running socsnap ...\n");
+    curl_global_init(CURL_GLOBAL_ALL);
 
     //monitor_status();
-    post_picture();
+    char *path = "mike.jpg";
+    char *status = get_time();
+    post_picture(path, status);
 
+    curl_global_cleanup();
     return 0;
 }
