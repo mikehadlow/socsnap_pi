@@ -4,6 +4,9 @@
 #include <string.h>
 #include <curl/curl.h>
 #include <time.h>
+#include <pthread.h>
+#include <zmq.h>
+#include <signal.h>
 
 #include "dbg.h"
 #include "bstrlib.h"
@@ -11,6 +14,46 @@
 #include "../twitter/twitter.h"
 
 #define KEYVALUE_LENGTH 7 
+
+static int s_interrupted = 0;
+static void s_signal_handler(int signal_value)
+{
+    printf("Shuting down.\n");
+    s_interrupted = 1;
+}
+
+static void s_catch_signals(void)
+{
+    printf("Running s_catch_signals.\n");
+    struct sigaction action;
+    action.sa_handler = s_signal_handler;
+    action.sa_flags = 0;
+    sigemptyset (&action.sa_mask);
+    sigaction(SIGINT, &action, NULL);
+    sigaction(SIGTERM, &action, NULL);
+}
+
+// Receive 0MQ string from socket and convert into C string
+// Caller must free returned string. Returns NULL if the context
+// is being terminated.
+static char * s_recv (void *socket) 
+{
+    char buffer [256];
+    int size = zmq_recv (socket, buffer, 255, 0);
+    if (size == -1)
+        return NULL;
+    if (size > 255)
+        size = 255;
+    buffer [size] = 0;
+    return strdup (buffer);
+}
+
+// Convert C string to 0MQ string and send to socket
+static int s_send (void *socket, char *string) 
+{
+    int size = zmq_send (socket, string, strlen (string), 0);
+    return size;
+}
 
 typedef struct bKeyValue {
     bstring key;
@@ -176,7 +219,7 @@ void curl_test(bstring oauth_header, char *url) {
     CURL *curl;
     CURLcode res;
     struct curl_slist *headers = NULL;
-    headers = curl_slist_append(headers, oauth_header->data);
+    headers = curl_slist_append(headers, (const char *)oauth_header->data);
 
     printf("\ncurl test ...\n");
 
@@ -216,8 +259,7 @@ bstring get_oauth_header(char *url, char *method)
     return oauth_header;
 }
 
-void monitor_status()
-{
+void *monitor_status(void *ptr) {
     char *url = "https://userstream.twitter.com/1.1/user.json";
     char *method = "GET";
 
@@ -225,6 +267,8 @@ void monitor_status()
     curl_test(oauth_header, url);
     
     bdestroy(oauth_header);
+
+    return NULL;
 }
 
 char *get_time()
@@ -250,7 +294,7 @@ void post_picture(char *path, char *status)
 
     bstring oauth_header = get_oauth_header(url, method);
 
-    headers = curl_slist_append(headers, oauth_header->data);
+    headers = curl_slist_append(headers, (const char *)oauth_header->data);
     headers = curl_slist_append(headers, "Expect:");
 
     curl_formadd(&formpost, &lastptr,
@@ -289,16 +333,88 @@ void post_picture(char *path, char *status)
     curl_slist_free_all(headers);
 }
 
+void *listen_control(void *zcontext)
+{
+    void *xmitter = zmq_socket(zcontext, ZMQ_PAIR);
+    zmq_connect(xmitter, "inproc://take_picture");
+
+    printf("[listen control] sending 'test' message\n");
+    s_send(xmitter, "TEST");
+
+    zmq_close(xmitter);
+    
+    return NULL;
+}
+
+void *take_picture_control(void *zcontext)
+{
+    void *receiver = zmq_socket(zcontext, ZMQ_PAIR);
+    zmq_bind(receiver, "inproc://take_picture");
+
+    pthread_t listen_thread;
+    pthread_create(&listen_thread, NULL, listen_control, zcontext);
+
+    void *xmitter = zmq_socket(zcontext, ZMQ_PAIR);
+    zmq_connect(xmitter, "inproc://post_picture");
+
+    while(!s_interrupted) {
+        printf("[Take picture control] waiting for message.\n");
+        char *message = s_recv(receiver);
+        if(s_interrupted) {
+            printf("[Take picture control] interrpt received, killing server.\n");
+            break;
+        }
+        printf("[Take picture control] got message %s\n", message);
+        s_send(xmitter, message);
+    }
+
+    zmq_close(receiver);
+    zmq_close(xmitter);
+
+    return NULL;
+}
+
+void *post_picture_control(void *zcontext)
+{
+    void *receiver = zmq_socket(zcontext, ZMQ_PAIR);
+    zmq_bind(receiver, "inproc://post_picture");
+
+    pthread_t picture_thread;
+    pthread_create(&picture_thread, NULL, take_picture_control, zcontext);
+
+    while(!s_interrupted) {
+        printf("[post picture control] waiting for message.\n");
+        char *message = s_recv(receiver);
+        if(s_interrupted) {
+            printf("[post picture control] interrupt received, killing server.\n");
+            break;
+        }
+        printf("[post picture control] got message %s\n", message);
+        free(message);
+
+        char *path = "mike.jpg";
+        char *status = get_time();
+        post_picture(path, status);
+    }
+    zmq_close(receiver);
+
+    return NULL;
+}
+
 int main(int argc, char *argv[])
 {
+    //s_catch_signals();
+
     printf("Running socsnap ...\n");
     curl_global_init(CURL_GLOBAL_ALL);
+    void *zcontext = zmq_ctx_new();
 
-    //monitor_status();
-    char *path = "mike.jpg";
-    char *status = get_time();
-    post_picture(path, status);
+    pthread_t listen_thread;
+    pthread_create( &listen_thread, NULL, post_picture_control, zcontext);
+
+    pthread_join( listen_thread, NULL );
 
     curl_global_cleanup();
+    zmq_ctx_destroy(zcontext);
     return 0;
 }

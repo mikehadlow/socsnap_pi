@@ -1,7 +1,7 @@
 PREFIX?=/usr/local
 
 CFLAGS=-g -Wall 
-LDFLAGS=-loauth -lcurl -lm
+LDFLAGS=-loauth -lcurl -lm -lpthread -lzmq
 
 all: socsnap
 
