@@ -14,6 +14,7 @@
 #include "../twitter/twitter.h"
 
 #define KEYVALUE_LENGTH 7 
+#define TWITTER_HANDLE "socsnap"
 
 static int s_interrupted = 0;
 static void s_signal_handler(int signal_value)
@@ -152,14 +153,38 @@ bstring build_oauth_header(bKeyValues *keyvalues)
     return buffer;
 }
 
+bstring get_oauth_header(char *url, char *method)
+{
+    bstring args = get_oauth_args(url, method);
+    bKeyValues *keyvalues;
+    keyvalues = get_key_values(args);
+    bstring oauth_header = build_oauth_header(keyvalues);
+
+    bdestroy(args);
+    destroy_keyvalues(keyvalues);
+
+    return oauth_header;
+}
+
+void send_status(void *zcontext, char *twitterhandle)
+{
+    void *xmitter = zmq_socket(zcontext, ZMQ_PAIR);
+    zmq_connect(xmitter, "inproc://take_picture");
+
+    printf("[send status] sending to '%s' message\n", twitterhandle);
+    s_send(xmitter, twitterhandle);
+
+    zmq_close(xmitter);
+}
+
 // libcurl writer callback
-size_t write_data(void *buffer, size_t size, size_t nmemb, void *userp)
+size_t write_data(void *buffer, size_t size, size_t nmemb, void *zcontext)
 {
     int i = 0;
     char *data;
     data = (char *) buffer;
     size_t realsize = size * nmemb;
-    cJSON *root, *text, *user, *screen_name;
+    cJSON *root, *text, *user, *screen_name, *entities, *user_mentions, *user_mention_screen_name;
     char *rendered;
 
     printf("Got data: size: %zu, nmemb: %zu\n", size, nmemb);
@@ -180,18 +205,15 @@ size_t write_data(void *buffer, size_t size, size_t nmemb, void *userp)
                 printf("Got newline\n");
                 data[i] = '\0';
                 root = cJSON_Parse(data);
-                if(root == NULL) {
-                    printf("cJSON_Parse returned NULL\n");
-                    return realsize;
-                }
-                
+                check(root, "root element does not exist");
+               
                 rendered = cJSON_Print(root);
                 printf("\nData:\n%s\n\n", rendered);
                 free(rendered);
 
                 text = cJSON_GetObjectItem(root,"text");
                 if(text != NULL) {
-                    printf("Text: %s\n", text->valuestring);
+                    printf("[monitor status] Text: %s\n", text->valuestring);
 
                     user = cJSON_GetObjectItem(root,"user");
                     check(user, "user element does not exist.");
@@ -199,7 +221,22 @@ size_t write_data(void *buffer, size_t size, size_t nmemb, void *userp)
                     screen_name = cJSON_GetObjectItem(user,"screen_name");
                     check(screen_name, "screen_name eleemnt does not exist"); 
 
-                    printf("User: %s\n", screen_name->valuestring);
+                    entities = cJSON_GetObjectItem(root, "entities");
+                    check(entities, "entities element does not exist");
+
+                    user_mentions = cJSON_GetObjectItem(entities, "user_mentions");
+                    if(user_mentions != NULL) {
+                        if(user_mentions->child != NULL) {
+                            user_mention_screen_name = cJSON_GetObjectItem(user_mentions->child, "screen_name");
+                            check(user_mention_screen_name, "user_mentions->screen_name does not exist.");
+
+                            if(strncmp(user_mention_screen_name->valuestring, TWITTER_HANDLE, 140) == 0) {
+                                printf("[monitor status] User: %s\n", screen_name->valuestring);
+                                send_status(zcontext, screen_name->valuestring);
+                            }
+                        }
+                    }
+
                 } else {
                     printf("text element not found\n");
                 }
@@ -215,7 +252,11 @@ error:
     return realsize;
 }
 
-void curl_test(bstring oauth_header, char *url) {
+void *monitor_status(void *zcontext) {
+    char *url = "https://userstream.twitter.com/1.1/user.json?with=user";
+    char *method = "GET";
+
+    bstring oauth_header = get_oauth_header(url, method);
     CURL *curl;
     CURLcode res;
     struct curl_slist *headers = NULL;
@@ -234,6 +275,7 @@ void curl_test(bstring oauth_header, char *url) {
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
         curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, zcontext);
 
         res = curl_easy_perform(curl);
         if(res != CURLE_OK) {
@@ -244,27 +286,6 @@ void curl_test(bstring oauth_header, char *url) {
         curl_easy_cleanup(curl);
     }
     curl_slist_free_all(headers);
-}
-
-bstring get_oauth_header(char *url, char *method)
-{
-    bstring args = get_oauth_args(url, method);
-    bKeyValues *keyvalues;
-    keyvalues = get_key_values(args);
-    bstring oauth_header = build_oauth_header(keyvalues);
-
-    bdestroy(args);
-    destroy_keyvalues(keyvalues);
-
-    return oauth_header;
-}
-
-void *monitor_status(void *ptr) {
-    char *url = "https://userstream.twitter.com/1.1/user.json";
-    char *method = "GET";
-
-    bstring oauth_header = get_oauth_header(url, method);
-    curl_test(oauth_header, url);
     
     bdestroy(oauth_header);
 
@@ -333,26 +354,13 @@ void post_picture(char *path, char *status)
     curl_slist_free_all(headers);
 }
 
-void *listen_control(void *zcontext)
-{
-    void *xmitter = zmq_socket(zcontext, ZMQ_PAIR);
-    zmq_connect(xmitter, "inproc://take_picture");
-
-    printf("[listen control] sending 'test' message\n");
-    s_send(xmitter, "TEST");
-
-    zmq_close(xmitter);
-    
-    return NULL;
-}
-
 void *take_picture_control(void *zcontext)
 {
     void *receiver = zmq_socket(zcontext, ZMQ_PAIR);
     zmq_bind(receiver, "inproc://take_picture");
 
     pthread_t listen_thread;
-    pthread_create(&listen_thread, NULL, listen_control, zcontext);
+    pthread_create(&listen_thread, NULL, monitor_status, zcontext);
 
     void *xmitter = zmq_socket(zcontext, ZMQ_PAIR);
     zmq_connect(xmitter, "inproc://post_picture");
@@ -374,6 +382,15 @@ void *take_picture_control(void *zcontext)
     return NULL;
 }
 
+bstring create_status(char *screen_name)
+{
+    bstring status = bfromcstr("@");
+    bcatcstr(status, screen_name);
+    bcatcstr(status, " Your photo taken at ");
+    bcatcstr(status, get_time());
+    return status;
+}
+
 void *post_picture_control(void *zcontext)
 {
     void *receiver = zmq_socket(zcontext, ZMQ_PAIR);
@@ -390,11 +407,11 @@ void *post_picture_control(void *zcontext)
             break;
         }
         printf("[post picture control] got message %s\n", message);
-        free(message);
 
         char *path = "mike.jpg";
-        char *status = get_time();
-        post_picture(path, status);
+        bstring status = create_status(message);
+        post_picture(path, (char *)status->data);
+        free(message);
     }
     zmq_close(receiver);
 
