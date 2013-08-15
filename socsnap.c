@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <zmq.h>
 #include <signal.h>
+#include <unistd.h>
 
 #include "dbg.h"
 #include "bstrlib.h"
@@ -374,12 +375,14 @@ void *take_picture_control(void *zcontext)
         }
         printf("[Take picture control] got message %s, taking picture...\n", message);
 
+        system("cp graphics/splash_ready.raw /dev/fb0");
+        sleep(5000);
         system("raspistill -h 300 -w 300 -o mike.jpg");
 
         printf("[Take picture control] picture taken\n");
         
         // put the splash screen back up
-        system("cp splash1.raw /dev/fb0");
+        system("cp graphics/splash_main.raw /dev/fb0");
 
         s_send(xmitter, message);
     }
@@ -431,7 +434,7 @@ int main(int argc, char *argv[])
     //s_catch_signals();
 
     printf("Running socsnap ...\n");
-    system("cp splash1.raw /dev/fb0");
+    system("cp graphics/splash_main.raw /dev/fb0");
     curl_global_init(CURL_GLOBAL_ALL);
     void *zcontext = zmq_ctx_new();
 
