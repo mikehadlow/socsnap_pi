@@ -273,7 +273,7 @@ void *monitor_status(void *zcontext) {
         curl_easy_setopt(curl, CURLOPT_URL, url);
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-        curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+        //curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, zcontext);
 
@@ -334,7 +334,7 @@ void post_picture(char *path, char *status)
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
         curl_easy_setopt(curl, CURLOPT_URL, url);
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-        curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+        //curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
         curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
 
         res = curl_easy_perform(curl);
@@ -372,7 +372,15 @@ void *take_picture_control(void *zcontext)
             printf("[Take picture control] interrpt received, killing server.\n");
             break;
         }
-        printf("[Take picture control] got message %s\n", message);
+        printf("[Take picture control] got message %s, taking picture...\n", message);
+
+        system("raspistill -h 300 -w 300 -o mike.jpg");
+
+        printf("[Take picture control] picture taken\n");
+        
+        // put the splash screen back up
+        system("cp splash1.raw /dev/fb0");
+
         s_send(xmitter, message);
     }
 
@@ -423,6 +431,7 @@ int main(int argc, char *argv[])
     //s_catch_signals();
 
     printf("Running socsnap ...\n");
+    system("cp splash1.raw /dev/fb0");
     curl_global_init(CURL_GLOBAL_ALL);
     void *zcontext = zmq_ctx_new();
 
