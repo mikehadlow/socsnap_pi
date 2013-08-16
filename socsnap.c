@@ -376,7 +376,7 @@ void *take_picture_control(void *zcontext)
         printf("[Take picture control] got message %s, taking picture...\n", message);
 
         system("cp graphics/splash_ready.raw /dev/fb0");
-        sleep(5000);
+        sleep(5);
         system("raspistill -h 300 -w 300 -o mike.jpg");
 
         printf("[Take picture control] picture taken\n");
