@@ -22,3 +22,19 @@ Socsnap uses the excellent ZeroMQ messaging library internally. There's no prebu
     ./configure
     make
     make install
+
+Get the source code for SocSnap by cloning this repository (you'll need to have git installed to do this):
+
+    sudo apt-get install git
+    git clone git@github.com:mikehadlow/socsnap_pi.git
+    
+Edit the twitter.h file with your keys:
+
+    :TODO
+    
+Compile and run socsnap:
+
+    cd socsnap_pi
+    make
+    cd bin
+    ./socsnap
