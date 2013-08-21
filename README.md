@@ -49,7 +49,7 @@ with
 
     1:2345:respawn:<dir of socsnap>/socsnap
 
-##Creating splashscreens
+##Creating Splash Screens
 
 SocSnap shows graphical splash screens as it operates. They are located in the grahics directory. You can edit the png files and then create new 'raw' files with the following command:
 
