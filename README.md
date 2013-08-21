@@ -9,7 +9,7 @@ Twitter based social picture device for Raspberry Pi.
 
 Socsnap is currently only released as source code, so you'll have to build it yourself.
 
-First, get all the dependencies installed:
+First, install dependencies:
 
     sudo apt-get install liboauth-dev
     sudo apt-get install libcurl-dev
