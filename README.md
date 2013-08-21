@@ -3,6 +3,8 @@ socsnap_pi
 
 Twitter based social picture device for Raspberry Pi.
 
+[Homepage](http://socsnap.com)
+
 ###Install
 
 Socsnap is currently only released as source code, so you'll have to build it yourself.
