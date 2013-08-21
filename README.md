@@ -1,5 +1,5 @@
-socsnap_pi
-==========
+SocSnap
+=======
 
 Twitter based social picture device for Raspberry Pi.
 
