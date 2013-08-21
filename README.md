@@ -39,7 +39,7 @@ Compile and run socsnap:
     cd bin
     ./socsnap
     
-##Kiosk
+###Kiosk
     
 If you want your Raspbery Pi to behave like a kiosk device (so it launches socsnap on startup) edit your /etc/inittab and replace
 
@@ -49,7 +49,7 @@ with
 
     1:2345:respawn:<dir of socsnap>/socsnap
 
-##Creating Splash Screens
+###Creating Splash Screens
 
 SocSnap shows graphical splash screens as it operates. They are located in the grahics directory. You can edit the png files and then create new 'raw' files with the following command:
 
