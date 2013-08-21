@@ -12,20 +12,24 @@
 #include "bstrlib.h"
 #include "cJSON.h"
 #include "auth.h"
+#include "logger.h"
 
 #define KEYVALUE_LENGTH 7 
 #define TWITTER_HANDLE "socsnap"
 
+#define SPLASH_MAIN "../graphics/splash_main.raw"
+#define SPLASH_READY "../graphics/splash_ready.raw"
+
 static int s_interrupted = 0;
 static void s_signal_handler(int signal_value)
 {
-    printf("Shuting down.\n");
+    writeline("Shuting down.\n");
     s_interrupted = 1;
 }
 
 static void s_catch_signals(void)
 {
-    printf("Running s_catch_signals.\n");
+    writeline("Running s_catch_signals.\n");
     struct sigaction action;
     action.sa_handler = s_signal_handler;
     action.sa_flags = 0;
@@ -61,7 +65,7 @@ void send_status(void *zcontext, char *twitterhandle)
     void *xmitter = zmq_socket(zcontext, ZMQ_PAIR);
     zmq_connect(xmitter, "inproc://take_picture");
 
-    printf("[send status] sending to '%s' message\n", twitterhandle);
+    writeline("[send status] sending to '%s' message\n", twitterhandle);
     s_send(xmitter, twitterhandle);
 
     zmq_close(xmitter);
@@ -76,15 +80,15 @@ size_t write_data(void *buffer, size_t size, size_t nmemb, void *zcontext)
     size_t realsize = size * nmemb;
     cJSON *root, *text, *user, *screen_name, *entities, *user_mentions, *user_mention_screen_name;
 
-    printf("[Monitor status callback] Got data: size: %zu, nmemb: %zu\n", size, nmemb);
+    writeline("[Monitor status callback] Got data: size: %zu, nmemb: %zu\n", size, nmemb);
 
     if(nmemb < 2) {
-        printf("[Monitor status callback] Unexpected short buffer.\n");
+        writeline("[Monitor status callback] Unexpected short buffer.\n");
         return realsize;
     }
 
     if(data[0] == '\r') {
-        printf("[Monitor status callback] Keep alive.\n");
+        writeline("[Monitor status callback] Keep alive.\n");
         return realsize;
     }
 
@@ -95,14 +99,16 @@ size_t write_data(void *buffer, size_t size, size_t nmemb, void *zcontext)
                 root = cJSON_Parse(data);
                 check(root, "root element does not exist");
                
-                //char *rendered;
-                //rendered = cJSON_Print(root);
-                //printf("\nData:\n%s\n\n", rendered);
-                //free(rendered);
+#ifdef DEBUG
+                char *rendered;
+                rendered = cJSON_Print(root);
+                writeline("\nData:\n%s\n\n", rendered);
+                free(rendered);
+#endif
 
                 text = cJSON_GetObjectItem(root,"text");
                 if(text != NULL) {
-                    printf("[monitor status] Text: %s\n", text->valuestring);
+                    writeline("[monitor status] Text: %s\n", text->valuestring);
 
                     user = cJSON_GetObjectItem(root,"user");
                     check(user, "user element does not exist.");
@@ -120,14 +126,14 @@ size_t write_data(void *buffer, size_t size, size_t nmemb, void *zcontext)
                             check(user_mention_screen_name, "user_mentions->screen_name does not exist.");
 
                             if(strncmp(user_mention_screen_name->valuestring, TWITTER_HANDLE, 140) == 0) {
-                                printf("[monitor status] User: %s\n", screen_name->valuestring);
+                                writeline("[monitor status] User: %s\n", screen_name->valuestring);
                                 send_status(zcontext, screen_name->valuestring);
                             }
                         }
                     }
 
                 } else {
-                    printf("[Monitor status callback] text element not found\n");
+                    writeline("[Monitor status callback] text element not found\n");
                 }
 
                 cJSON_Delete(root);
@@ -160,16 +166,18 @@ void *monitor_status(void *zcontext) {
         curl_easy_setopt(curl, CURLOPT_URL, url);
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-        //curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+#ifdef DEBUG
+        curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+#endif
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, zcontext);
 
         while(!s_interrupted) {
             res = curl_easy_perform(curl);
             if(res != CURLE_OK) {
-                fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+                writeline("[ERROR] curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
             } 
-            printf("[Monitor Status] lost twitter stream, reconnecting in 60 seconds.");
+            writeline("[Monitor Status] lost twitter stream, reconnecting in 60 seconds.");
             sleep(60);
         }
        
@@ -231,16 +239,18 @@ void post_picture(char *path, char *status)
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
         curl_easy_setopt(curl, CURLOPT_URL, url);
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-        //curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+#ifdef DEBUG
+        curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+#endif
         curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, post_picture_callback);
 
         res = curl_easy_perform(curl);
 
         if(res != CURLE_OK) {
-            fprintf(stderr, "curl_easy_perform failed: %s\n", curl_easy_strerror(res));
+            writeline("[ERROR] curl_easy_perform failed: %s\n", curl_easy_strerror(res));
         } 
-        printf("[Post Picture] upload succeeded\n");
+        writeline("[Post Picture] upload succeeded\n");
     }
 
 
@@ -248,6 +258,13 @@ void post_picture(char *path, char *status)
     bdestroy(oauth_header);
     curl_easy_cleanup(curl);
     curl_slist_free_all(headers);
+}
+
+void put_framebuffer(char *bitmap)
+{
+    char str[1024];
+    sprintf(str, "cp %s /dev/fb0", bitmap);
+    system(str);
 }
 
 void *take_picture_control(void *zcontext)
@@ -262,22 +279,23 @@ void *take_picture_control(void *zcontext)
     zmq_connect(xmitter, "inproc://post_picture");
 
     while(!s_interrupted) {
-        printf("[Take picture control] waiting for message.\n");
+        writeline("[Take picture control] waiting for message.\n");
         char *message = s_recv(receiver);
         if(s_interrupted) {
-            printf("[Take picture control] interrpt received, killing server.\n");
+            writeline("[Take picture control] interrpt received, killing server.\n");
             break;
         }
-        printf("[Take picture control] got message %s, taking picture...\n", message);
+        writeline("[Take picture control] got message %s, taking picture...\n", message);
 
-        system("cp ../graphics/splash_ready.raw /dev/fb0");
+        put_framebuffer(SPLASH_READY);
         sleep(5);
+
         system("raspistill -h 300 -w 300 -o picture.jpg");
 
-        printf("[Take picture control] picture taken\n");
+        writeline("[Take picture control] picture taken\n");
         
         // put the splash screen back up
-        system("cp ../graphics/splash_main.raw /dev/fb0");
+        put_framebuffer(SPLASH_MAIN);
 
         s_send(xmitter, message);
     }
@@ -306,13 +324,13 @@ void *post_picture_control(void *zcontext)
     pthread_create(&picture_thread, NULL, take_picture_control, zcontext);
 
     while(!s_interrupted) {
-        printf("[post picture control] waiting for message.\n");
+        writeline("[post picture control] waiting for message.\n");
         char *message = s_recv(receiver);
         if(s_interrupted) {
-            printf("[post picture control] interrupt received, killing server.\n");
+            writeline("[post picture control] interrupt received, killing server.\n");
             break;
         }
-        printf("[post picture control] got message %s\n", message);
+        writeline("[post picture control] got message %s\n", message);
 
         char *path = "picture.jpg";
         bstring status = create_status(message);
@@ -328,8 +346,8 @@ int main(int argc, char *argv[])
 {
     //s_catch_signals();
 
-    printf("[Main] Running socsnap ...\n");
-    system("cp ../graphics/splash_main.raw /dev/fb0");
+    writeline("[Main] Running socsnap ...\n");
+    put_framebuffer(SPLASH_MAIN);
     curl_global_init(CURL_GLOBAL_ALL);
     void *zcontext = zmq_ctx_new();
 

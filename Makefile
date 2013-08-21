@@ -10,6 +10,9 @@ TARGET=bin/socsnap
 
 all: $(TARGET)
 
+debug: CFLAGS += -DDEBUG
+debug: $(TARGET)
+
 $(TARGET): build $(OBJECTS) 
 	cc $(CFLAGS) $(OBJECTS) -o $(TARGET) $(LDFLAGS) -Wl,-rpath=/usr/local/lib
 
