@@ -38,3 +38,11 @@ Compile and run socsnap:
     make
     cd bin
     ./socsnap
+    
+If you want your Raspbery Pi to behave like a kiosk device (so it launches socsnap on startup) edit your /etc/inittab and replace
+
+    1:2345:respawn:/sbin/getty 38400 tty1
+    
+with 
+
+    1:2345:respawn:<dir of socsnap>/socsnap
