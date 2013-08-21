@@ -1,7 +1,7 @@
 socsnap_pi
 ==========
 
-Twitter based social picture booth for Raspberry Pi.
+Twitter based social picture device for Raspberry Pi.
 
 Install ...
 
