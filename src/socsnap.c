@@ -14,6 +14,7 @@
 #include "auth.h"
 #include "logger.h"
 #include "zmqhelp.h"
+#include "status.h"
 
 #define TWITTER_HANDLE "socsnap"
 
@@ -21,6 +22,8 @@
 #define SPLASH_READY "../graphics/splash_ready.raw"
 
 static int s_interrupted = 0;
+
+/*
 static void s_signal_handler(int signal_value)
 {
     writeline("Shuting down.\n");
@@ -36,6 +39,14 @@ static void s_catch_signals(void)
     sigemptyset (&action.sa_mask);
     sigaction(SIGINT, &action, NULL);
     sigaction(SIGTERM, &action, NULL);
+}
+*/
+
+void put_framebuffer(char *bitmap)
+{
+    char str[1024];
+    sprintf(str, "cp %s /dev/fb0", bitmap);
+    system(str);
 }
 
 void send_status(void *zcontext, char *twitterhandle)
@@ -185,6 +196,17 @@ size_t post_picture_callback(void *buffer, size_t size, size_t nmemb, void *zcon
     return realsize;
 }
 
+size_t header_callback( void *ptr, size_t size, size_t nmemb, void *userdata)
+{
+    size_t realsize = size * nmemb;
+    bstring headers = blk2bstr(ptr, (int)realsize);
+
+    printf((char *)headers->data);
+
+    bdestroy(headers);
+    return realsize;
+}
+
 void post_picture(char *path, char *status)
 {
     char *url = "https://api.twitter.com/1.1/statuses/update_with_media.json";
@@ -222,6 +244,9 @@ void post_picture(char *path, char *status)
 #endif
         curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, post_picture_callback);
+        
+        curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_callback);
+        curl_easy_setopt(curl, CURLOPT_WRITEHEADER, NULL);
 
         res = curl_easy_perform(curl);
 
@@ -238,13 +263,6 @@ void post_picture(char *path, char *status)
     curl_slist_free_all(headers);
 }
 
-void put_framebuffer(char *bitmap)
-{
-    char str[1024];
-    sprintf(str, "cp %s /dev/fb0", bitmap);
-    system(str);
-}
-
 void *take_picture_control(void *zcontext)
 {
     void *receiver = zmq_socket(zcontext, ZMQ_PAIR);
@@ -256,6 +274,9 @@ void *take_picture_control(void *zcontext)
     void *xmitter = zmq_socket(zcontext, ZMQ_PAIR);
     zmq_connect(xmitter, "inproc://post_picture");
 
+    void *status_context = create_status_context(zcontext);
+    char status[80];
+
     while(!s_interrupted) {
         writeline("[Take picture control] waiting for message.\n");
         char *message = s_recv(receiver);
@@ -266,6 +287,8 @@ void *take_picture_control(void *zcontext)
         writeline("[Take picture control] got message %s, taking picture...\n", message);
 
         put_framebuffer(SPLASH_READY);
+        sprintf(status, "Picture request from @%s", message);
+        status_update(status_context, status);
         sleep(5);
 
         system("raspistill -h 300 -w 300 -o picture.jpg");
@@ -274,10 +297,14 @@ void *take_picture_control(void *zcontext)
         
         // put the splash screen back up
         put_framebuffer(SPLASH_MAIN);
+        sprintf(status, "Picture taken of @%s", message);
+        status_update(status_context, status);
 
         s_send(xmitter, message);
+        free(message);
     }
 
+    destroy_status_context(status_context);
     zmq_close(receiver);
     zmq_close(xmitter);
 
@@ -303,6 +330,7 @@ void *post_picture_control(void *zcontext)
 
     while(!s_interrupted) {
         writeline("[post picture control] waiting for message.\n");
+
         char *message = s_recv(receiver);
         if(s_interrupted) {
             writeline("[post picture control] interrupt received, killing server.\n");
@@ -315,6 +343,7 @@ void *post_picture_control(void *zcontext)
         post_picture(path, (char *)status->data);
         free(message);
     }
+    
     zmq_close(receiver);
 
     return NULL;
@@ -325,9 +354,12 @@ int main(int argc, char *argv[])
     //s_catch_signals();
 
     writeline("[Main] Running socsnap ...\n");
-    put_framebuffer(SPLASH_MAIN);
+    
     curl_global_init(CURL_GLOBAL_ALL);
     void *zcontext = zmq_ctx_new();
+    status_init(zcontext);
+
+    put_framebuffer(SPLASH_MAIN);
 
     pthread_t listen_thread;
     pthread_create( &listen_thread, NULL, post_picture_control, zcontext);

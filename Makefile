@@ -1,7 +1,7 @@
 PREFIX?=/usr/local
 
 CFLAGS=-g -Wall 
-LDFLAGS=-loauth -lcurl -lm -lpthread -lzmq
+LDFLAGS=-loauth -lcurl -lm -lpthread -lzmq -lncurses
 
 SOURCES=$(wildcard src/**/*.c src/*.c)
 OBJECTS=$(patsubst %.c,%.o,$(SOURCES))
@@ -9,9 +9,6 @@ OBJECTS=$(patsubst %.c,%.o,$(SOURCES))
 TARGET=bin/socsnap
 
 all: $(TARGET)
-
-debug: CFLAGS += -DDEBUG
-debug: $(TARGET)
 
 $(TARGET): build $(OBJECTS) 
 	cc $(CFLAGS) $(OBJECTS) -o $(TARGET) $(LDFLAGS) -Wl,-rpath=/usr/local/lib
