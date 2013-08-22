@@ -1,5 +1,5 @@
-socsnap_pi
-==========
+SocSnap
+=======
 
 Twitter based social picture device for Raspberry Pi.
 
@@ -38,3 +38,20 @@ Compile and run socsnap:
     make
     cd bin
     ./socsnap
+    
+###Kiosk
+    
+If you want your Raspbery Pi to behave like a kiosk device (so it launches socsnap on startup) edit your /etc/inittab and replace
+
+    1:2345:respawn:/sbin/getty 38400 tty1
+    
+with
+
+    1:2345:respawn:<dir of socsnap>/socsnap
+
+###Creating Splash Screens
+
+SocSnap shows graphical splash screens as it operates. They are located in the grahics directory. You can edit the png files and then create new 'raw' files with the following command:
+
+    avconv -vcodec png -i splash_main.png -vcodec rawvideo -f rawvideo -pix_fmt rgb565 splash_main.raw
+
