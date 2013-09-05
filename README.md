@@ -13,6 +13,7 @@ First, install dependencies:
 
     sudo apt-get install liboauth-dev
     sudo apt-get install libcurl-dev
+    sudo apt=get install ncurses-dev
     
 Socsnap uses the excellent ZeroMQ messaging library internally. There's no prebuilt binary for this on Raspbery Pi, so you have to build it yourself:
     
